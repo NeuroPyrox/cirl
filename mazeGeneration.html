@@ -3,8 +3,146 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Maze Generation</title>
+  <title>Maze Display</title>
+  <style>
+    body {
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f4f4f4;
+    }
+
+    canvas {
+      width: min(90vmin, 600px);
+      height: min(90vmin, 600px);
+      background: white;
+      box-shadow: 0 2px 12px rgb(0 0 0 / 15%);
+    }
+  </style>
 </head>
 <body>
+  <canvas id="maze" width="600" height="600" aria-label="A 30 by 30 maze"></canvas>
+
+  <script>
+    const size = 30;
+    const canvas = document.querySelector("#maze");
+
+    const createGrid = (rows, columns, value) =>
+      Array.from({ length: rows }, () => Array(columns).fill(value));
+
+    const createMaze = (size) => ({
+      size,
+      horizontalWalls: createGrid(size + 1, size, true),
+      verticalWalls: createGrid(size, size + 1, true),
+      visited: createGrid(size, size, false)
+    });
+
+    const shuffle = (items, random = Math.random) => {
+      if (items.length === 0) {
+        return [];
+      }
+
+      const randomIndex = Math.floor(random() * items.length);
+      const [selected] = items.filter((_, index) => index === randomIndex);
+      const remaining = items.filter((_, index) => index !== randomIndex);
+      return [selected, ...shuffle(remaining, random)];
+    };
+
+    const neighborsOf = (x, y) => [
+      ["top", x, y - 1],
+      ["right", x + 1, y],
+      ["bottom", x, y + 1],
+      ["left", x - 1, y]
+    ];
+
+    const isInsideMaze = (size, x, y) =>
+      x >= 0 && x < size && y >= 0 && y < size;
+
+    const markVisited = (maze, x, y) => ({
+      ...maze,
+      visited: maze.visited.map((row, rowIndex) =>
+        rowIndex === y
+          ? row.map((cell, columnIndex) => columnIndex === x || cell)
+          : row
+      )
+    });
+
+    const openWall = (maze, direction, x, y) => {
+      const horizontal = direction === "top" || direction === "bottom";
+      const wallGrid = horizontal ? maze.horizontalWalls : maze.verticalWalls;
+      const wallY = direction === "top" ? y : direction === "bottom" ? y + 1 : y;
+      const wallX = direction === "left" ? x : direction === "right" ? x + 1 : x;
+      const updatedWalls = wallGrid.map((row, rowIndex) =>
+        rowIndex === wallY
+          ? row.map((wall, columnIndex) =>
+              columnIndex === wallX ? false : wall
+            )
+          : row
+      );
+
+      return horizontal
+        ? { ...maze, horizontalWalls: updatedWalls }
+        : { ...maze, verticalWalls: updatedWalls };
+    };
+
+    const generateFrom = (maze, x, y, random) => {
+      const visitedMaze = markVisited(maze, x, y);
+
+      return shuffle(neighborsOf(x, y), random).reduce(
+        (currentMaze, [direction, nextX, nextY]) => {
+          if (
+            !isInsideMaze(currentMaze.size, nextX, nextY) ||
+            currentMaze.visited[nextY][nextX]
+          ) {
+            return currentMaze;
+          }
+
+          const carvedMaze = openWall(currentMaze, direction, x, y);
+          return generateFrom(carvedMaze, nextX, nextY, random);
+        },
+        visitedMaze
+      );
+    };
+
+    const generateMaze = (size, random = Math.random) =>
+      generateFrom(createMaze(size), 0, 0, random);
+
+    const wallSegments = (maze, canvasSize) => {
+      const cellSize = canvasSize / maze.size;
+      const horizontal = maze.horizontalWalls.flatMap((row, y) =>
+        row.flatMap((wall, x) =>
+          wall
+            ? [[[x * cellSize, y * cellSize], [(x + 1) * cellSize, y * cellSize]]]
+            : []
+        )
+      );
+      const vertical = maze.verticalWalls.flatMap((row, y) =>
+        row.flatMap((wall, x) =>
+          wall
+            ? [[[x * cellSize, y * cellSize], [x * cellSize, (y + 1) * cellSize]]]
+            : []
+        )
+      );
+
+      return [...horizontal, ...vertical];
+    };
+
+    const drawMaze = (context, maze, canvasSize) => {
+      context.clearRect(0, 0, canvasSize, canvasSize);
+      context.fillStyle = "white";
+      context.fillRect(0, 0, canvasSize, canvasSize);
+      context.beginPath();
+      context.strokeStyle = "black";
+      context.lineWidth = 2;
+      wallSegments(maze, canvasSize).forEach(([[startX, startY], [endX, endY]]) => {
+        context.moveTo(startX, startY);
+        context.lineTo(endX, endY);
+      });
+      context.stroke();
+    };
+
+    drawMaze(canvas.getContext("2d"), generateMaze(size), canvas.width);
+  </script>
 </body>
 </html>
